@@ -2,7 +2,9 @@
 
 use std::process::Command;
 
+use crate::platform;
 use crate::{Error, RunContext, VmId};
+
 
 /// Start a virtual machine by UUID or name.
 ///
@@ -11,21 +13,18 @@ use crate::{Error, RunContext, VmId};
 /// as a frontend context, which requires the caller to be running in a
 /// GUI Desktop session.  If it is set to [`RunContext::Headless`]
 pub fn start(id: &VmId, ctx: &RunContext) -> Result<(), Error> {
-  let mut args = Vec::new();
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   let id = id.to_string();
-  args.push("startvm");
-  args.push(&id);
-  args.push("--type");
-  args.push(match ctx {
+  cmd.arg("startvm");
+  cmd.arg(&id);
+  cmd.arg("--type");
+  cmd.arg(match ctx {
     RunContext::GUI => "gui",
     RunContext::Headless => "headless"
   });
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
+  let out = cmd.output().expect("Unable to execute VBoxManager");
 
   if out.status.success() {
     Ok(())
@@ -44,18 +43,14 @@ pub fn start(id: &VmId, ctx: &RunContext) -> Result<(), Error> {
 /// useful if the virtual machine is anyway going to be reinstalled or
 /// restored to a snapshot.
 pub fn kill(id: &VmId) -> Result<(), Error> {
-  let mut args = Vec::new();
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
+  cmd.arg("controlvm");
   let id = id.to_string();
-  args.push("controlvm");
-  args.push(&id);
-  args.push("poweroff");
+  cmd.arg(&id);
+  cmd.arg("poweroff");
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
-
+  let out = cmd.output().expect("Unable to execute VBoxManager");
   if out.status.success() {
     Ok(())
   } else {
@@ -69,17 +64,14 @@ pub fn kill(id: &VmId) -> Result<(), Error> {
 
 /// Reset a virtual machine.
 pub fn reset(id: &VmId) -> Result<(), Error> {
-  let mut args = Vec::new();
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
+  cmd.arg("controlvm");
   let id = id.to_string();
-  args.push("controlvm");
-  args.push(&id);
-  args.push("reset");
+  cmd.arg(&id);
+  cmd.arg("reset");
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
+  let out = cmd.output().expect("Unable to execute VBoxManager");
 
   if out.status.success() {
     Ok(())

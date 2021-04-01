@@ -30,6 +30,7 @@
 //! VirtualBox.
 
 mod err;
+mod platform;
 mod strutils;
 
 pub mod controlvm;
@@ -93,7 +94,7 @@ pub fn have_vm(id: &VmId) -> Result<bool, Error> {
 
 
 pub fn get_vm_list() -> Result<Vec<(String, uuid::Uuid)>, Error> {
-  let mut cmd = Command::new("VBoxManage");
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
   cmd.args(&["list", "vms"]);
   let output = cmd.output().expect("Failed to execute VBoxManage");
 
@@ -164,13 +165,11 @@ pub fn get_vm_list() -> Result<Vec<(String, uuid::Uuid)>, Error> {
 
 /// Get information about a virtual machine as a map.
 pub fn get_vm_info_map(id: &VmId) -> Result<HashMap<String, String>, Error> {
-  let mut args = Vec::new();
-  let mut cmd = Command::new("VBoxManage");
-  args.push("showvminfo");
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+  cmd.arg("showvminfo");
   let id_str = id.to_string();
-  args.push(&id_str);
-  args.push("--machinereadable");
-  cmd.args(args);
+  cmd.arg(&id_str);
+  cmd.arg("--machinereadable");
 
   let output = cmd.output().expect("Failed to execute VBoxManage");
 
@@ -184,6 +183,7 @@ pub fn get_vm_info_map(id: &VmId) -> Result<HashMap<String, String>, Error> {
   // ToDo: Handle multiline entires, like descriptions
   for line in lines {
     //println!("line: {}", line);
+    let line = line.trim_end();
 
     if let Some(cap) = re.captures(&line) {
       //println!("key: '{}'", &cap[1]);

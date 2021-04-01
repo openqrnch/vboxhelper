@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 use regex::Regex;
 
+use crate::platform;
 use crate::strutils::{buf_to_strlines, EmptyLine};
 use crate::VmId;
 
@@ -71,18 +72,15 @@ impl Eq for Snapshot {}
 
 /// Get a HashMap of all snapshots.
 pub fn map(id: &VmId) -> Result<HashMap<String, String>, Error> {
-  let mut args = Vec::new();
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
+  cmd.arg("snapshot");
   let id = id.to_string();
-  args.push("snapshot");
-  args.push(&id);
-  args.push("list");
-  args.push("--machinereadable");
+  cmd.arg(&id);
+  cmd.arg("list");
+  cmd.arg("--machinereadable");
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
+  let out = cmd.output().expect("Unable to execute VBoxManager");
 
   let lines = buf_to_strlines(&out.stdout, EmptyLine::Ignore);
 
@@ -318,8 +316,6 @@ pub fn get_from_map(
 /// If `snap_id` is `None` the "current" snapshot is restored.  Otherwise
 /// `snap_id` should be a `SnapshotId` which identified a snapshot to restore.
 pub fn restore(id: &VmId, snap_id: Option<SnapshotId>) -> Result<(), Error> {
-  let mut args = Vec::new();
-
   if let Some(ref snap_id) = snap_id {
     if let SnapshotId::Name(nm) = snap_id {
       let snaps = get(id)?;
@@ -340,21 +336,20 @@ pub fn restore(id: &VmId, snap_id: Option<SnapshotId>) -> Result<(), Error> {
     }
   }
 
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+
 
   let id = id.to_string();
-  args.push("snapshot".to_string());
-  args.push(id.to_string());
+  cmd.arg("snapshot".to_string());
+  cmd.arg(id.to_string());
   if let Some(snap_id) = snap_id {
-    args.push("restore".to_string());
-    args.push(snap_id.to_string());
+    cmd.arg("restore".to_string());
+    cmd.arg(snap_id.to_string());
   } else {
-    args.push("restorecurrent".to_string());
+    cmd.arg("restorecurrent".to_string());
   }
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
+  let out = cmd.output().expect("Unable to execute VBoxManager");
 
   if out.status.success() {
     Ok(())
@@ -371,17 +366,14 @@ pub fn restore(id: &VmId, snap_id: Option<SnapshotId>) -> Result<(), Error> {
 ///
 /// Croaks if the snapshot does not exist.
 pub fn delete(vm_id: &VmId, snap_id: &SnapshotId) -> Result<(), Error> {
-  let mut args = Vec::new();
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
-  args.push("snapshot".to_string());
-  args.push(vm_id.to_string());
-  args.push("delete".to_string());
-  args.push(snap_id.to_string());
+  cmd.arg("snapshot");
+  cmd.arg(vm_id.to_string());
+  cmd.arg("delete");
+  cmd.arg(snap_id.to_string());
 
-  let out = Command::new("VBoxManage")
-    .args(args)
-    .output()
-    .expect("Unable to execute VBoxManager");
+  let out = cmd.output().expect("Unable to execute VBoxManager");
 
   if out.status.success() {
     Ok(())
