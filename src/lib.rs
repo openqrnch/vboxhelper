@@ -31,6 +31,7 @@
 
 mod platform;
 mod strutils;
+mod utils;
 
 pub mod controlvm;
 pub mod err;
@@ -96,11 +97,16 @@ pub fn have_vm(id: &VmId) -> Result<bool, Error> {
 pub fn get_vm_list() -> Result<Vec<(String, uuid::Uuid)>, Error> {
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
   cmd.args(&["list", "vms"]);
-  let output = cmd.output().expect("Failed to execute VBoxManage");
+
+  let output = match cmd.output() {
+    Ok(out) => out,
+    Err(_) => {
+      return Err(Error::FailedToExecute(format!("{:?}", cmd)));
+    }
+  };
 
   if !output.status.success() {
-    let dbg = format!("{:?}", cmd);
-    return Err(Error::CommandFailed(output.status.code(), dbg));
+    return Err(Error::CommandFailed(format!("{:?}", cmd), output));
   }
 
   let lines = buf_to_strlines(&output.stdout, EmptyLine::Ignore);

@@ -5,9 +5,11 @@ use std::io;
 pub enum Error {
   IO(String),
   BadFormat(String),
-  CommandFailed(Option<i32>, String),
+  FailedToExecute(String),
+  CommandFailed(String, std::process::Output),
   MissingData(String),
   Ambiguous(String),
+  Missing(String),
   Timeout
 }
 
@@ -25,17 +27,22 @@ impl From<eui48::ParseError> for Error {
   }
 }
 
-
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &*self {
       Error::IO(s) => write!(f, "I/O error; {}", s),
       Error::BadFormat(s) => write!(f, "Bad format error; {}", s),
-      Error::CommandFailed(code, s) => match code {
-        Some(code) => write!(f, "Command failed; exit status={}; {}", code, s),
-        None => write!(f, "Command failed; {}", s)
+      Error::FailedToExecute(s) => {
+        write!(f, "Failed to start command; {}", s)
+      }
+      Error::CommandFailed(s, output) => match output.status.code() {
+        Some(code) => {
+          write!(f, "Command returned failure; exit status={}; {}", code, s)
+        }
+        None => write!(f, "Command returned failure; {}", s)
       },
       Error::MissingData(s) => write!(f, "Missing expected data error; {}", s),
+      Error::Missing(s) => write!(f, "Unexpectedly missing; {}", s),
       Error::Ambiguous(s) => write!(f, "Ambiguity error; {}", s),
       Error::Timeout => write!(f, "Timeout")
     }

@@ -9,6 +9,7 @@ use regex::Regex;
 
 use crate::platform;
 use crate::strutils::{buf_to_strlines, EmptyLine};
+use crate::utils;
 use crate::VmId;
 
 use crate::Error;
@@ -80,9 +81,9 @@ pub fn map(id: &VmId) -> Result<HashMap<String, String>, Error> {
   cmd.arg("list");
   cmd.arg("--machinereadable");
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  let (stdout, _) = utils::exec(cmd)?;
 
-  let lines = buf_to_strlines(&out.stdout, EmptyLine::Ignore);
+  let lines = buf_to_strlines(&stdout, EmptyLine::Ignore);
 
   let mut map = HashMap::new();
 
@@ -106,15 +107,7 @@ pub fn map(id: &VmId) -> Result<HashMap<String, String>, Error> {
     map.insert(cap[1].to_string(), cap[2].to_string());
   }
 
-
-  if out.status.success() {
-    Ok(map)
-  } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Unable to start command.".to_string()
-    ))
-  }
+  Ok(map)
 }
 
 
@@ -311,20 +304,100 @@ pub fn get_from_map(
 }
 
 
+/// Take a new snapshot at current vm state.
+pub fn take(vid: &VmId, nm: &str) -> Result<(), Error> {
+  // VBoxManage snapshot <vid> take <nm>
+
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+  cmd.arg("snapshot");
+  cmd.arg(vid.to_string());
+  cmd.arg("take");
+  cmd.arg(nm);
+
+  utils::exec(cmd)?;
+
+  Ok(())
+}
+
+
+/// Returns `Ok(true)` if the virtual machine `vid` has one or more snapshots
+/// named `name`.
+pub fn have_name(vid: &VmId, name: &str) -> Result<bool, Error> {
+  if let Some(snaps) = get(vid)? {
+    let snaplist = snaps.get_by_name(name);
+    if snaplist.is_empty() {
+      Ok(false)
+    } else {
+      Ok(true)
+    }
+  } else {
+    Ok(false)
+  }
+}
+
+
+/// Returns `Ok(true)` if the virtual machine `vid` has a single snapshot
+/// named `name`.  Returns `Err(Missing)` if there are no snapshots with that
+/// name.  Returns `Err(Error::Ambiguous)` if there's more than one.
+pub fn check_unique_name(vid: &VmId, name: &str) -> Result<(), Error> {
+  if let Some(snaps) = get(vid)? {
+    let snaplist = snaps.get_by_name(name);
+    if snaplist.len() == 1 {
+      return Ok(());
+    } else if snaplist.len() > 1 {
+      let s = format!(
+        "Virtual machine '{}' has multiple snapshots named '{}'",
+        vid.to_string(),
+        name
+      );
+      return Err(Error::Ambiguous(s));
+    }
+  }
+
+  let s = format!(
+    "Virtual machine '{}' has no snapshot named '{}'",
+    vid.to_string(),
+    name
+  );
+  Err(Error::Missing(s))
+}
+
+
+/// Rename a snapshot
+pub fn rename(
+  vid: &VmId,
+  sid: &SnapshotId,
+  newname: &str
+) -> Result<(), Error> {
+  // VBoxManage snapshot <vid> edit <sid> --name=<newname>
+
+  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+  cmd.arg("snapshot");
+  cmd.arg(vid.to_string());
+  cmd.arg("edit");
+  cmd.arg(sid.to_string());
+  cmd.arg(format!("--name={}", newname));
+
+  utils::exec(cmd)?;
+
+  Ok(())
+}
+
+
 /// Restore a virtual machine to a snapshot.
 ///
 /// If `snap_id` is `None` the "current" snapshot is restored.  Otherwise
 /// `snap_id` should be a `SnapshotId` which identified a snapshot to restore.
-pub fn restore(id: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
+pub fn restore(vid: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
   if let Some(ref snap_id) = snap_id {
     if let SnapshotId::Name(nm) = snap_id {
-      let snaps = get(id)?;
+      let snaps = get(vid)?;
       if let Some(snaps) = snaps {
         let snaplist = snaps.get_by_name(nm);
         if snaplist.len() > 1 {
           let s = format!(
             "The VM '{}' has multiple snapshots named '{}'",
-            id.to_string(),
+            vid.to_string(),
             nm
           );
           return Err(Error::Ambiguous(s));
@@ -338,10 +411,8 @@ pub fn restore(id: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
 
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
-
-  let id = id.to_string();
   cmd.arg("snapshot".to_string());
-  cmd.arg(id.to_string());
+  cmd.arg(vid.to_string());
   if let Some(snap_id) = snap_id {
     cmd.arg("restore".to_string());
     cmd.arg(snap_id.to_string());
@@ -349,16 +420,9 @@ pub fn restore(id: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
     cmd.arg("restorecurrent".to_string());
   }
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  utils::exec(cmd)?;
 
-  if out.status.success() {
-    Ok(())
-  } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Command returned error.".to_string()
-    ))
-  }
+  Ok(())
 }
 
 
@@ -373,16 +437,9 @@ pub fn delete(vm_id: &VmId, snap_id: &SnapshotId) -> Result<(), Error> {
   cmd.arg("delete");
   cmd.arg(snap_id.to_string());
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  utils::exec(cmd)?;
 
-  if out.status.success() {
-    Ok(())
-  } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Command returned error.".to_string()
-    ))
-  }
+  Ok(())
 }
 
 

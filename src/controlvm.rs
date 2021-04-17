@@ -15,24 +15,28 @@ use crate::{Error, RunContext, VmId};
 pub fn start(id: &VmId, ctx: &RunContext) -> Result<(), Error> {
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
-  let id = id.to_string();
+  //let id = ;
   cmd.arg("startvm");
-  cmd.arg(&id);
+  //cmd.arg(&id);
+  cmd.arg(id.to_string());
   cmd.arg("--type");
   cmd.arg(match ctx {
     RunContext::GUI => "gui",
     RunContext::Headless => "headless"
   });
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  let out = match cmd.output() {
+    Ok(out) => out,
+    Err(_) => {
+      return Err(Error::FailedToExecute(format!("{:?}", cmd)));
+    }
+  };
 
   if out.status.success() {
     Ok(())
   } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Unable to start command.".to_string()
-    ))
+    let s = format!("{:?}", cmd);
+    Err(Error::CommandFailed(s, out))
   }
 }
 
@@ -50,14 +54,17 @@ pub fn kill(id: &VmId) -> Result<(), Error> {
   cmd.arg(&id);
   cmd.arg("poweroff");
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  let out = match cmd.output() {
+    Ok(out) => out,
+    Err(_) => {
+      return Err(Error::FailedToExecute(format!("{:?}", cmd)));
+    }
+  };
+
   if out.status.success() {
     Ok(())
   } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Unable to start command.".to_string()
-    ))
+    Err(Error::CommandFailed(format!("{:?}", cmd), out))
   }
 }
 
@@ -71,15 +78,18 @@ pub fn reset(id: &VmId) -> Result<(), Error> {
   cmd.arg(&id);
   cmd.arg("reset");
 
-  let out = cmd.output().expect("Unable to execute VBoxManager");
+  let out = match cmd.output() {
+    Ok(out) => out,
+    Err(_) => {
+      let s = format!("{:?}", cmd);
+      return Err(Error::FailedToExecute(s));
+    }
+  };
 
   if out.status.success() {
     Ok(())
   } else {
-    Err(Error::CommandFailed(
-      out.status.code(),
-      "Unable to start command.".to_string()
-    ))
+    Err(Error::CommandFailed(format!("{:?}", cmd), out))
   }
 }
 
