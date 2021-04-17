@@ -22,18 +22,18 @@
 //!
 //! // revert to a snapshot
 //! let snap = "mysnap".parse::<snapshot::SnapshotId>().unwrap();
-//! snapshot::restore(&vm, Some(snap)).unwrap();
+//! snapshot::restore(&vm, Some(&snap)).unwrap();
 //! ```
 //!
 //! # VirtualBox Versions
 //! This crate will generally attempt to track the latest version of
 //! VirtualBox.
 
-mod err;
 mod platform;
 mod strutils;
 
 pub mod controlvm;
+pub mod err;
 pub mod nics;
 pub mod snapshot;
 pub mod vmid;
@@ -46,7 +46,7 @@ use std::time::{Duration, Instant};
 
 use regex::Regex;
 
-use err::Error;
+pub use err::Error;
 
 use strutils::{buf_to_strlines, EmptyLine};
 
@@ -177,21 +177,43 @@ pub fn get_vm_info_map(id: &VmId) -> Result<HashMap<String, String>, Error> {
 
   let mut map = HashMap::new();
 
-  // refine as we go along
-  let re = Regex::new(r#"^"?(?P<key>[^"=]+)"?="?(?P<val>[^"=]*)"?$"#).unwrap();
+  // multiline
+  let re_ml1 = Regex::new(r#"^(?P<key>[^"=]+)="(?P<val>[^"=]*)"$"#).unwrap();
+  let re_ml1 = Regex::new(r#"^"(?P<key>[^"=]+)"="(?P<val>[^"=]*)"$"#).unwrap();
+
+  // Capture foo="bar" -> foo=bar
+  // This appears to be most common.
+  let re1 = Regex::new(r#"^(?P<key>[^"=]+)="(?P<val>[^"=]*)"$"#).unwrap();
+
+  // Capture "foo"="bar" -> foo=bar
+  let re2 = Regex::new(r#"^"(?P<key>[^"=]+)"="(?P<val>[^"=]*)"$"#).unwrap();
+
+  // foo=bar -> foo=bar
+  let re3 = Regex::new(r#"^(?P<key>[^"=]+)=(?P<val>[^"=]*)$"#).unwrap();
+
+  //let re = Regex::new(r#"^"?(?P<key>[^"=]+)"?="?(?P<val>[^"=]*)"?$"#).
+  // unwrap();
+
 
   // ToDo: Handle multiline entires, like descriptions
-  for line in lines {
+  let mut lines = lines.iter();
+  while let Some(line) = lines.next() {
     //println!("line: {}", line);
+
     let line = line.trim_end();
-
-    if let Some(cap) = re.captures(&line) {
-      //println!("key: '{}'", &cap[1]);
-      //println!("value: '{}'", &cap[2]);
-
-      map.insert(cap[1].to_string(), cap[2].to_string());
+    let cap = if let Some(cap) = re1.captures(&line) {
+      Some(cap)
+    } else if let Some(cap) = re2.captures(&line) {
+      Some(cap)
+    } else if let Some(cap) = re3.captures(&line) {
+      Some(cap)
     } else {
       println!("Ignored line: {}", line);
+      None
+    };
+
+    if let Some(cap) = cap {
+      map.insert(cap[1].to_string(), cap[2].to_string());
     }
   }
 

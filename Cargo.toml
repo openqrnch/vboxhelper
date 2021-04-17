@@ -1,6 +1,6 @@
 [package]
 name = "vboxhelper"
-version = "0.1.1"
+version = "0.1.3"
 authors = ["Jan Danielsson <jan.danielsson@qrnch.com>"]
 edition = "2018"
 license = "0BSD"
@@ -8,7 +8,7 @@ categories = [ "api-bindings", "parsing" ]
 keywords = [ "vbox", "virtualbox", "helper" ]
 repository = "https://github.com/openqrnch/vboxhelper"
 description = "API on top of VirtualBox's command line tools."
-exclude = [ "rustfmt.toml", "examples" ]
+exclude = [ "rustfmt.toml", "examples", "src/parsers.rs" ]
 
 [dependencies]
 eui48 = { version = "1" }

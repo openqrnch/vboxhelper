@@ -315,7 +315,7 @@ pub fn get_from_map(
 ///
 /// If `snap_id` is `None` the "current" snapshot is restored.  Otherwise
 /// `snap_id` should be a `SnapshotId` which identified a snapshot to restore.
-pub fn restore(id: &VmId, snap_id: Option<SnapshotId>) -> Result<(), Error> {
+pub fn restore(id: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
   if let Some(ref snap_id) = snap_id {
     if let SnapshotId::Name(nm) = snap_id {
       let snaps = get(id)?;
