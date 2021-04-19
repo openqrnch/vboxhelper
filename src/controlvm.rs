@@ -4,31 +4,48 @@ use std::borrow::Borrow;
 use std::process::Command;
 
 use crate::platform;
-use crate::{Error, RunContext, VmId};
+use crate::{Error, Headless, RunContext, VmId};
 
 
 /// Start a virtual machine by UUID or name.
 ///
 /// `ctx` controls how the virtual machine session is launched.  If it
 /// is set to [`RunContext::GUI`] the virtual machine will be launched
-/// as a frontend context, which requires the caller to be running in a
-/// GUI Desktop session.  If it is set to [`RunContext::Headless`]
+/// as a GUI frontend context, which requires the caller to be running in a
+/// GUI Desktop session.  If it is set to [`RunContext::Headless`] the VM
+/// will run without a frontend GUI.
 pub fn start<V, R>(vid: V, ctx: R) -> Result<(), Error>
 where
   V: Borrow<VmId>,
   R: Borrow<RunContext>
 {
-  let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+  let mut cmd = match ctx.borrow() {
+    RunContext::GUI => {
+      let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+      cmd.arg("startvm");
+      cmd.arg(vid.borrow().to_string());
+      cmd.arg("--type");
+      cmd.arg("gui");
 
-  //let id = ;
-  cmd.arg("startvm");
-  //cmd.arg(&id);
-  cmd.arg(vid.borrow().to_string());
-  cmd.arg("--type");
-  cmd.arg(match ctx.borrow() {
-    RunContext::GUI => "gui",
-    RunContext::Headless => "headless"
-  });
+      cmd
+    }
+    RunContext::Headless(Headless::Detached) => {
+      let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
+      cmd.arg("startvm");
+      cmd.arg(vid.borrow().to_string());
+      cmd.arg("--type");
+      cmd.arg("headless");
+
+      cmd
+    }
+    RunContext::Headless(Headless::Blocking) => {
+      let mut cmd = Command::new(platform::get_cmd("VBoxHeadless"));
+      cmd.arg("--startvm");
+      cmd.arg(vid.borrow().to_string());
+
+      cmd
+    }
+  };
 
   let out = match cmd.output() {
     Ok(out) => out,

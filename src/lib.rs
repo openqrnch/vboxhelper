@@ -56,13 +56,26 @@ use strutils::{buf_to_strlines, EmptyLine};
 pub use vmid::VmId;
 
 
-/// In what context a virtual machine is run.
+/// Control whether running a VM headless should block until VM terminates or
+/// if it should return as soon as the VM has been started in the background.
+pub enum Headless {
+  /// The VM will start and return immediately while the VM is running in the
+  /// background.
+  Detached,
+
+  /// If the VM is started successfully the call will block until the VM
+  /// terminates.
+  Blocking
+}
+
+
+/// Control whether a virtual machine is run with a GUI or in Headless mode.
 pub enum RunContext {
   /// The virtual machine will run as a application on a Desktop GUI.
   GUI,
 
-  /// The virtual machine will run as a background process.
-  Headless
+  /// The virtual machine will run without a GUI.
+  Headless(Headless)
 }
 
 
@@ -221,7 +234,7 @@ where
     } else if let Some(cap) = re3.captures(&line) {
       Some(cap)
     } else {
-      println!("Ignored line: {}", line);
+      dbg!(format!("Ignored line: {}", line));
       None
     };
 
