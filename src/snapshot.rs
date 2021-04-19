@@ -1,5 +1,6 @@
 //! Manage virtual machine snapshots.
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::process::Command;
@@ -72,12 +73,14 @@ impl Eq for Snapshot {}
 
 
 /// Get a HashMap of all snapshots.
-pub fn map(id: &VmId) -> Result<HashMap<String, String>, Error> {
+pub fn map<V>(vid: V) -> Result<HashMap<String, String>, Error>
+where
+  V: Borrow<VmId>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   cmd.arg("snapshot");
-  let id = id.to_string();
-  cmd.arg(&id);
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("list");
   cmd.arg("--machinereadable");
 
@@ -118,8 +121,11 @@ pub struct Snapshots {
 }
 
 impl Snapshots {
-  fn get(&self, id: &SnapshotId) -> Vec<&Snapshot> {
-    match id {
+  fn get<S>(&self, sid: S) -> Vec<&Snapshot>
+  where
+    S: Borrow<SnapshotId>
+  {
+    match sid.borrow() {
       SnapshotId::Name(nm) => self.get_by_name(nm),
       SnapshotId::Uuid(u) => match self.get_by_uuid(u) {
         Some(u) => vec![u],
@@ -138,10 +144,14 @@ impl Snapshots {
   pub fn get_by_uuid(&self, uuid: &uuid::Uuid) -> Option<&Snapshot> {
     self.map.get(uuid)
   }
-  pub fn get_by_name(&self, name: &str) -> Vec<&Snapshot> {
+
+  pub fn get_by_name<N>(&self, name: N) -> Vec<&Snapshot>
+  where
+    N: AsRef<str>
+  {
     let mut out = Vec::new();
     for (_, snap) in &self.map {
-      if snap.name.as_str() == name {
+      if snap.name.as_str() == name.as_ref() {
         out.push(snap);
       }
     }
@@ -164,13 +174,19 @@ impl Snapshots {
   }
 }
 
-/// Get a structured representation of all snapshots for a virtual machine.
-pub fn get(vm_id: &VmId) -> Result<Option<Snapshots>, Error> {
-  // Get snapshots as a HashMap
-  let map = map(vm_id)?;
 
+/// Get a structured representation of all snapshots for a virtual machine.
+pub fn get<V>(vid: V) -> Result<Option<Snapshots>, Error>
+where
+  V: Borrow<VmId>
+{
+  // Get snapshots as a HashMap
+  let map = map(vid)?;
+
+  // Convert snapshots HashMap into a structure
   get_from_map(&map)
 }
+
 
 /// Convert a HashMap of snapshots (typically aquired using [`map()`]) to a
 /// structured representation of the snapshots tree.
@@ -305,14 +321,18 @@ pub fn get_from_map(
 
 
 /// Take a new snapshot at current vm state.
-pub fn take(vid: &VmId, nm: &str) -> Result<(), Error> {
+pub fn take<V, N>(vid: V, nm: N) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  N: AsRef<str>
+{
   // VBoxManage snapshot <vid> take <nm>
 
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
   cmd.arg("snapshot");
-  cmd.arg(vid.to_string());
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("take");
-  cmd.arg(nm);
+  cmd.arg(nm.as_ref());
 
   utils::exec(cmd)?;
 
@@ -322,7 +342,11 @@ pub fn take(vid: &VmId, nm: &str) -> Result<(), Error> {
 
 /// Returns `Ok(true)` if the virtual machine `vid` has one or more snapshots
 /// named `name`.
-pub fn have_name(vid: &VmId, name: &str) -> Result<bool, Error> {
+pub fn have_name<V, N>(vid: V, name: N) -> Result<bool, Error>
+where
+  V: Borrow<VmId>,
+  N: AsRef<str>
+{
   if let Some(snaps) = get(vid)? {
     let snaplist = snaps.get_by_name(name);
     if snaplist.is_empty() {
@@ -339,16 +363,20 @@ pub fn have_name(vid: &VmId, name: &str) -> Result<bool, Error> {
 /// Returns `Ok(true)` if the virtual machine `vid` has a single snapshot
 /// named `name`.  Returns `Err(Missing)` if there are no snapshots with that
 /// name.  Returns `Err(Error::Ambiguous)` if there's more than one.
-pub fn check_unique_name(vid: &VmId, name: &str) -> Result<(), Error> {
-  if let Some(snaps) = get(vid)? {
-    let snaplist = snaps.get_by_name(name);
+pub fn check_unique_name<V, N>(vid: V, name: N) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  N: AsRef<str>
+{
+  if let Some(snaps) = get(vid.borrow())? {
+    let snaplist = snaps.get_by_name(name.borrow());
     if snaplist.len() == 1 {
       return Ok(());
     } else if snaplist.len() > 1 {
       let s = format!(
         "Virtual machine '{}' has multiple snapshots named '{}'",
-        vid.to_string(),
-        name
+        vid.borrow().to_string(),
+        name.as_ref()
       );
       return Err(Error::Ambiguous(s));
     }
@@ -356,27 +384,28 @@ pub fn check_unique_name(vid: &VmId, name: &str) -> Result<(), Error> {
 
   let s = format!(
     "Virtual machine '{}' has no snapshot named '{}'",
-    vid.to_string(),
-    name
+    vid.borrow().to_string(),
+    name.as_ref()
   );
   Err(Error::Missing(s))
 }
 
 
 /// Rename a snapshot
-pub fn rename(
-  vid: &VmId,
-  sid: &SnapshotId,
-  newname: &str
-) -> Result<(), Error> {
+pub fn rename<V, S, N>(vid: V, sid: S, newname: N) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  S: Borrow<SnapshotId>,
+  N: AsRef<str>
+{
   // VBoxManage snapshot <vid> edit <sid> --name=<newname>
 
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
   cmd.arg("snapshot");
-  cmd.arg(vid.to_string());
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("edit");
-  cmd.arg(sid.to_string());
-  cmd.arg(format!("--name={}", newname));
+  cmd.arg(sid.borrow().to_string());
+  cmd.arg(format!("--name={}", newname.as_ref()));
 
   utils::exec(cmd)?;
 
@@ -388,16 +417,20 @@ pub fn rename(
 ///
 /// If `snap_id` is `None` the "current" snapshot is restored.  Otherwise
 /// `snap_id` should be a `SnapshotId` which identified a snapshot to restore.
-pub fn restore(vid: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
+pub fn restore<V, S>(vid: V, snap_id: Option<S>) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  S: Borrow<SnapshotId>
+{
   if let Some(ref snap_id) = snap_id {
-    if let SnapshotId::Name(nm) = snap_id {
-      let snaps = get(vid)?;
+    if let SnapshotId::Name(nm) = snap_id.borrow() {
+      let snaps = get(vid.borrow())?;
       if let Some(snaps) = snaps {
         let snaplist = snaps.get_by_name(nm);
         if snaplist.len() > 1 {
           let s = format!(
             "The VM '{}' has multiple snapshots named '{}'",
-            vid.to_string(),
+            vid.borrow().to_string(),
             nm
           );
           return Err(Error::Ambiguous(s));
@@ -412,10 +445,10 @@ pub fn restore(vid: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   cmd.arg("snapshot".to_string());
-  cmd.arg(vid.to_string());
+  cmd.arg(vid.borrow().to_string());
   if let Some(snap_id) = snap_id {
     cmd.arg("restore".to_string());
-    cmd.arg(snap_id.to_string());
+    cmd.arg(snap_id.borrow().to_string());
   } else {
     cmd.arg("restorecurrent".to_string());
   }
@@ -429,13 +462,17 @@ pub fn restore(vid: &VmId, snap_id: Option<&SnapshotId>) -> Result<(), Error> {
 /// Delete a snapshot.
 ///
 /// Croaks if the snapshot does not exist.
-pub fn delete(vm_id: &VmId, snap_id: &SnapshotId) -> Result<(), Error> {
+pub fn delete<V, S>(vid: V, sid: S) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  S: Borrow<SnapshotId>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   cmd.arg("snapshot");
-  cmd.arg(vm_id.to_string());
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("delete");
-  cmd.arg(snap_id.to_string());
+  cmd.arg(sid.borrow().to_string());
 
   utils::exec(cmd)?;
 
@@ -444,21 +481,22 @@ pub fn delete(vm_id: &VmId, snap_id: &SnapshotId) -> Result<(), Error> {
 
 
 /// Just like `delete()` but checks if the snapshot exists first.
-pub fn delete_if_exists(
-  vm_id: &VmId,
-  snap_id: SnapshotId
-) -> Result<(), Error> {
-  let snaps = get(vm_id)?;
+pub fn delete_if_exists<V, S>(vid: V, sid: S) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  S: Borrow<SnapshotId>
+{
+  let snaps = get(vid.borrow())?;
 
   if let Some(snaps) = snaps {
-    let snaplist = snaps.get(&snap_id);
+    let snaplist = snaps.get(sid.borrow());
 
     if snaplist.is_empty() {
       return Ok(());
     }
 
     // Seems like snapshot exists -- attempt to delete it
-    delete(&vm_id, &snap_id)?;
+    delete(vid, sid)?;
   }
 
   Ok(())

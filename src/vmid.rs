@@ -31,6 +31,7 @@ use crate::err::Error;
 ///   panic!("Not a name!");
 /// }
 /// ```
+#[derive(Clone)]
 pub enum VmId {
   /// Using a name is more human-friendly than an `Uuid`, but it's not
   /// universally unique.

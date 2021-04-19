@@ -1,5 +1,6 @@
 //! Control the run state of a virtual machine.
 
+use std::borrow::Borrow;
 use std::process::Command;
 
 use crate::platform;
@@ -12,15 +13,19 @@ use crate::{Error, RunContext, VmId};
 /// is set to [`RunContext::GUI`] the virtual machine will be launched
 /// as a frontend context, which requires the caller to be running in a
 /// GUI Desktop session.  If it is set to [`RunContext::Headless`]
-pub fn start(id: &VmId, ctx: &RunContext) -> Result<(), Error> {
+pub fn start<V, R>(vid: V, ctx: R) -> Result<(), Error>
+where
+  V: Borrow<VmId>,
+  R: Borrow<RunContext>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   //let id = ;
   cmd.arg("startvm");
   //cmd.arg(&id);
-  cmd.arg(id.to_string());
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("--type");
-  cmd.arg(match ctx {
+  cmd.arg(match ctx.borrow() {
     RunContext::GUI => "gui",
     RunContext::Headless => "headless"
   });
@@ -46,12 +51,15 @@ pub fn start(id: &VmId, ctx: &RunContext) -> Result<(), Error> {
 /// Killing a virtual machine is normally not a good idea, but it can be
 /// useful if the virtual machine is anyway going to be reinstalled or
 /// restored to a snapshot.
-pub fn kill(id: &VmId) -> Result<(), Error> {
+pub fn kill<V>(vid: V) -> Result<(), Error>
+where
+  V: Borrow<VmId>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   cmd.arg("controlvm");
-  let id = id.to_string();
-  cmd.arg(&id);
+  //let id = id.to_string();
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("poweroff");
 
   let out = match cmd.output() {
@@ -70,12 +78,14 @@ pub fn kill(id: &VmId) -> Result<(), Error> {
 
 
 /// Reset a virtual machine.
-pub fn reset(id: &VmId) -> Result<(), Error> {
+pub fn reset<V>(vid: V) -> Result<(), Error>
+where
+  V: Borrow<VmId>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
 
   cmd.arg("controlvm");
-  let id = id.to_string();
-  cmd.arg(&id);
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("reset");
 
   let out = match cmd.output() {

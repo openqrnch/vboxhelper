@@ -37,8 +37,10 @@ pub mod controlvm;
 pub mod err;
 pub mod nics;
 pub mod snapshot;
+pub mod storage;
 pub mod vmid;
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
@@ -73,11 +75,14 @@ pub enum TimeoutAction {
 }
 
 
-pub fn have_vm(id: &VmId) -> Result<bool, Error> {
+pub fn have_vm<V>(vid: V) -> Result<bool, Error>
+where
+  V: Borrow<VmId>
+{
   let lst = get_vm_list()?;
 
   for (name, uuid) in lst {
-    match id {
+    match vid.borrow() {
       VmId::Name(nm) => {
         if name == *nm {
           return Ok(true);
@@ -170,11 +175,13 @@ pub fn get_vm_list() -> Result<Vec<(String, uuid::Uuid)>, Error> {
 
 
 /// Get information about a virtual machine as a map.
-pub fn get_vm_info_map(id: &VmId) -> Result<HashMap<String, String>, Error> {
+pub fn get_vm_info_map<V>(vid: V) -> Result<HashMap<String, String>, Error>
+where
+  V: Borrow<VmId>
+{
   let mut cmd = Command::new(platform::get_cmd("VBoxManage"));
   cmd.arg("showvminfo");
-  let id_str = id.to_string();
-  cmd.arg(&id_str);
+  cmd.arg(vid.borrow().to_string());
   cmd.arg("--machinereadable");
 
   let output = cmd.output().expect("Failed to execute VBoxManage");
@@ -288,8 +295,11 @@ pub struct VmInfo {
 
 
 /// Get structured information about a virtual machine.
-pub fn get_vm_info(id: &VmId) -> Result<VmInfo, Error> {
-  let map = get_vm_info_map(id)?;
+pub fn get_vm_info<V>(vid: V) -> Result<VmInfo, Error>
+where
+  V: Borrow<VmId>
+{
+  let map = get_vm_info_map(vid)?;
 
   let mut shares_list = Vec::new();
   let mut shares_map = HashMap::new();
@@ -346,8 +356,11 @@ pub fn get_vm_info(id: &VmId) -> Result<VmInfo, Error> {
 
 
 /// Check whether a virtual machine is currently in a certain state.
-pub fn is_vm_state(id: &VmId, state: VmState) -> Result<bool, Error> {
-  let vmi = get_vm_info(id)?;
+pub fn is_vm_state<V>(vid: V, state: VmState) -> Result<bool, Error>
+where
+  V: Borrow<VmId>
+{
+  let vmi = get_vm_info(vid)?;
   Ok(vmi.state == state)
 }
 
@@ -370,13 +383,16 @@ pub fn is_vm_state(id: &VmId, state: VmState) -> Result<bool, Error> {
 ///
 /// This function polls `is_vm_state()` which calls `get_vm_info()`.  A very
 /// sad state of affairs.  :(
-pub fn wait_for_croak(
-  id: &VmId,
+pub fn wait_for_croak<V>(
+  vid: V,
   timeout: Option<(Duration, TimeoutAction)>
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+  V: Borrow<VmId>
+{
   let start = Instant::now();
   loop {
-    let poweroff = is_vm_state(id, VmState::PowerOff)?;
+    let poweroff = is_vm_state(vid.borrow(), VmState::PowerOff)?;
     if poweroff {
       break;
     }
@@ -386,7 +402,7 @@ pub fn wait_for_croak(
         match action {
           TimeoutAction::Error => return Err(Error::Timeout),
           TimeoutAction::Kill => {
-            controlvm::kill(id)?;
+            controlvm::kill(vid.borrow())?;
 
             // ToDo: Give it some time to croak.  If it doesn't, then return
             //       an "uncroakable vm" error.
